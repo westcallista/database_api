@@ -8,6 +8,7 @@ import asyncio
 import requests
 import time
 from manychat_tools import *
+
 #rds settings
 rds_host  = "aws-simplified.cahq9cyseoxq.us-east-1.rds.amazonaws.com"
 name = rds_config.db_username
@@ -65,7 +66,8 @@ def lambda_handler(event, context):
         "update_row": update_row,
         "read_and_print": read_and_print,
         "add_column": add_column,
-        "find": find
+        "find": find,
+        "new_columns": store_keys_and_values
     }
     try:
         res = call_mapping[call](data)
@@ -73,28 +75,25 @@ def lambda_handler(event, context):
         return {"statusCode": 200, "body": json.dumps(res)}
     except KeyError:
         return NO_CALL_RESPONSE
-    
-    
-    
-    
-    #print(valueOrDefault(data, "user_id"))
-    #update_row(data)
-    #read_and_print(data) 
-    #delete_column("Assistance")
-    #add_column("Assistance_Plan")
-    #show_columns()
+        
     
     #----------ADD NEW COLUMN--------------    
 def add_column(new_column):
     #add_string = "ALTER TABLE Chat_log ADD %s VARCHAR(255) "
     #cursor.execute(add_string, new_column)
-    add_string = "ALTER TABLE Chat_log ADD {} VARCHAR(255)".format(new_column)
-    cursor.execute(add_string)
+    new_column_stripped = new_column.replace("'", "")
+    print(new_column)
+    #add_string = f"ALTER TABLE Chat_log ADD COLUMN {new_column} varchar(255) "
+    cursor.execute(f"ALTER TABLE `Chat_log` ADD COLUMN `{new_column}` varchar(255) ")
+    #add = cursor.execute(add_string)
+    print("added column")
+    #show_columns()
     
     
 def show_columns():
     show = """SHOW COLUMNS FROM Chat_log"""
     cursor.execute(show)
+    #connection.commit()
     
     
     #----------UPDATE--------------
@@ -128,6 +127,9 @@ def update_row(data):
         connection.commit()
     cursor.execute('SELECT * from Chat_log')
     rows = cursor.fetchall()
+    for row in rows:
+      print("{0} {1} {2} {3} {4} {5} {6} {7}".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+        
     
 
 def find(data):
@@ -140,12 +142,17 @@ def find(data):
     finding_lastInteraction = """select * from `Chat_log` where last_interaction = %s """
     finding_agent = """select * from `Chat_log` where agent = %s """
     finding_plan = """select * from `Chat_log` where Assistance_Plan = %s """
-    if data["key"] == "company":
-        print(cursor.execute(finding_company, (data["value"])))
-    if data["key"] == "user_id":
-        print(cursor.execute(finding_userId, (data["value"])))
-    elif data["key"] == "full_name":
-        print(cursor.execute(finding_fullName, (data["value"])))
+    #if data["key"] == "company":
+    #    print(cursor.execute(finding_company, (data["value"])))
+        #cursor.execute(finding_company, (data["value"]))
+        #print("this is the number of found")
+    #if data["key"] == "user_id":
+    print(cursor.execute(finding_userId, (data["user_id"])))
+    for row in rows:
+      print("{0} {1} {2} {3} {4} {5} {6} {7}".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+    
+    if data["key"] == "full_name":
+        print(cursor.execute(finding_fullName, (data["full_name"])))
     elif data["key"] == "current_flow":
         print(cursor.execute(finding_flow, (data["value"])))
     elif data["key"] == "manychat_link":
@@ -163,6 +170,7 @@ def find(data):
     
     for row in rows:
       print("{0} {1} {2} {3} {4} {5} {6} {7}".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+      
     
     #----------PRINT DATA IN TABLE--------------
 def read_and_print(data):
@@ -170,9 +178,9 @@ def read_and_print(data):
     cursor.execute('SELECT * from Chat_log')
     connection.commit()
     rows = cursor.fetchall()
-    
     for row in rows:
       print("{0} {1} {2} {3} {4} {5} {6} {7}".format(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+    
         
     
 # # Default to empty string if no value for key
@@ -183,6 +191,43 @@ def valueOrDefault(data, key, default=""):
 def delete_column(unwanted_col):
     delete = f"ALTER TABLE Chat_log DROP COLUMN {unwanted_col}"
     cursor.execute(delete)
+    
+    #----------ALLOWS THE PAYLOAD TO CREATE NEW COLUMNS IN THE DATABASE IF THE COLUMN DOES NOT EXIST ALREADY
+def full_contact_detail_columns(data, keys, values):
+    #new_column = "ALTER TABLE Chat_log ADD COLUMN IF NOT EXISTS %s VARCHAR(255)"
+    # print(data.keys())
+    # values_stored = data.values()
+    # print(values_stored)
+    for x in keys:
+        #print(data.values().x)
+        current_columns = "SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = N'Chat_log' AND COLUMN_NAME = %s"
+        found = (cursor.execute(current_columns, (x)))
+        print(found)
+        if found == 0:
+            print('new column alert')
+            add_column(x)
+        print(x)
+    #show_columns()
+    
+        
+    #new_column = "ALTER TABLE Chat_log ADD COLUMN IF NOT EXISTS column_a VARCHAR(255)"
+    #add_string = "ALTER TABLE Chat_log ADD {} VARCHAR(255)".format(new_column)
+    #cursor.execute(add_string)
 
+    #----------REMOVING ALL KEYS THAT DO NOT HAVE VALUES (EMPTY STRINGS) SO THE COLUMN IS NOT CREATED IN THE TABLE
+def store_keys_and_values(data):
+    keys = []
+    values = []
+    count = 0
+    for x in data.keys():
+        keys.append(x)
+    for y in data.values():
+        if y == '':
+            keys.pop(count)
+        else:
+            values.append(y)
+        count += 1
+
+    full_contact_detail_columns(data, keys, values)
 
     
